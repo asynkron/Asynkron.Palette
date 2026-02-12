@@ -40,6 +40,8 @@ function parseArgs(argv) {
       strategy = args[++i];
     } else if (arg.startsWith('#')) {
       colors.push(arg);
+    } else if (/^[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(arg)) {
+      colors.push('#' + arg);
     }
   }
 
@@ -54,6 +56,7 @@ function printUsage() {
 
 Arguments:
   colors                One or more hex colors (e.g. #aa5420 #9b2010)
+                        If omitted, a random color is generated.
 
 Options:
   -c, --count N         Total number of base colors (default: max(inputs, 3))
@@ -64,16 +67,54 @@ Options:
   -h, --help            Show this help message
 
 Strategies:
-  analogous             Adjacent colors (±30°)
+  analogous             Adjacent colors on the wheel (±30°)
   complementary         Opposite colors (180°)
-  split-complementary   Split complement (150°, 210°)
+  split-complementary   Split complement (150° and 210°)
   triadic               Three-way split (120°)
   tetradic              Four-way split (90°)
   evenly-spaced         Equal spacing (360°/count)
 
+Color output:
+  Each base color produces 11 Tailwind-scale shades (50–950) using the
+  OKLCH color space. Shade 500 is the base color. Colors are named
+  semantically: primary, secondary, tertiary, accent, neutral.
+
+  By default, all colors are normalized to the first input color's
+  lightness and chroma (in OKLCH), so the palette looks cohesive.
+  Use --raw to skip this and keep input colors exactly as given.
+  Use --vibrant or --pastel to override the target lightness/chroma.
+
+  ANSI color output is used automatically when printing to a terminal.
+  Set NO_COLOR=1 to disable.
+
 Examples:
-  palette #aa5420 --count 3 --strategy triadic
-  palette #aa5420 #9b2010 --count 5 --strategy evenly-spaced`);
+  palette                                           Random 3-color palette
+  palette #aa5420                                   3 colors from anchor
+  palette #aa5420 --count 5 --strategy triadic      5 triadic colors
+  palette #aa5420 #9b2010 --count 5                 2 inputs + 3 generated
+  palette #aa5420 --vibrant                         Vibrant mood
+  palette #aa5420 --pastel                          Pastel mood
+  palette #aa5420 #3366ff --raw                     Keep exact input colors`);
+}
+
+function fillLargestGaps(existingHues, needed) {
+  const hues = [...existingHues];
+  const result = [];
+  for (let n = 0; n < needed; n++) {
+    const sorted = [...hues].sort((a, b) => a - b);
+    let maxGap = 0, bestMid = 0;
+    for (let i = 0; i < sorted.length; i++) {
+      const next = sorted[(i + 1) % sorted.length];
+      const gap = i + 1 < sorted.length ? next - sorted[i] : 360 - sorted[i] + sorted[0];
+      if (gap > maxGap) {
+        maxGap = gap;
+        bestMid = (sorted[i] + gap / 2) % 360;
+      }
+    }
+    result.push(bestMid);
+    hues.push(bestMid);
+  }
+  return result;
 }
 
 function isValidHex(hex) {
@@ -113,14 +154,23 @@ function main() {
   // Anchor color determines HSL properties for generated colors
   const [anchorH, anchorS, anchorL] = hexToHsl(colors[0]);
 
-  // Generate hue angles using the chosen strategy
-  const hues = generateHues(anchorH, count, strategy);
+  // Generate missing hues
+  let fillHues;
+  if (colors.length >= 2 && count > colors.length) {
+    // Multiple inputs: fill gaps between existing input hues
+    const inputHues = colors.map(c => hexToHsl(c)[0]);
+    fillHues = fillLargestGaps(inputHues, count - colors.length);
+  } else {
+    // Single input: use strategy
+    const allHues = generateHues(anchorH, count, strategy);
+    fillHues = allHues.slice(colors.length);
+  }
 
-  // Build base colors: generated colors use anchor's S/L
-  const baseColors = hues.map((hue, i) => {
-    if (i < colors.length) return colors[i];
-    return hslToHex(hue, anchorS, anchorL);
-  });
+  // Build base colors: inputs first, then generated fills
+  const baseColors = [
+    ...colors,
+    ...fillHues.map(hue => hslToHex(hue, anchorS, anchorL)),
+  ];
 
   // Normalize colors: mood overrides L/C for all, otherwise anchor's L/C for non-anchors
   if (!raw) {

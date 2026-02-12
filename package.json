@@ -1,16 +1,16 @@
 {
-  "name": "palette",
-  "version": "1.0.0",
+  "name": "@asynkron/palette",
+  "version": "1.0.1",
   "description": "CLI color palette generator with Tailwind-scale shades",
   "type": "module",
   "bin": {
-    "palette": "./bin.js"
+    "palette": "./cli.js"
   },
   "engines": {
     "node": ">=18"
   },
   "files": [
-    "bin.js",
+    "cli.js",
     "lib/"
   ]
 }

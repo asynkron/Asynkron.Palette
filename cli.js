@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { hexToHsl, hslToHex, hexToOklch, oklchToHex, hexToRgb } from './lib/color.js';
-import { generateHues, STRATEGY_NAMES } from './lib/strategies.js';
+import { generateHues, generateFillHues, STRATEGY_NAMES } from './lib/strategies.js';
 import { generateShades } from './lib/shades.js';
 import { assignNames } from './lib/names.js';
 
@@ -97,26 +97,6 @@ Examples:
   palette #aa5420 #3366ff --raw                     Keep exact input colors`);
 }
 
-function fillLargestGaps(existingHues, needed) {
-  const hues = [...existingHues];
-  const result = [];
-  for (let n = 0; n < needed; n++) {
-    const sorted = [...hues].sort((a, b) => a - b);
-    let maxGap = 0, bestMid = 0;
-    for (let i = 0; i < sorted.length; i++) {
-      const next = sorted[(i + 1) % sorted.length];
-      const gap = i + 1 < sorted.length ? next - sorted[i] : 360 - sorted[i] + sorted[0];
-      if (gap > maxGap) {
-        maxGap = gap;
-        bestMid = (sorted[i] + gap / 2) % 360;
-      }
-    }
-    result.push(bestMid);
-    hues.push(bestMid);
-  }
-  return result;
-}
-
 function isValidHex(hex) {
   return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(hex);
 }
@@ -157,9 +137,9 @@ function main() {
   // Generate missing hues
   let fillHues;
   if (colors.length >= 2 && count > colors.length) {
-    // Multiple inputs: fill gaps between existing input hues
+    // Multiple inputs: align strategy wheel to inputs, then fill unoccupied slots
     const inputHues = colors.map(c => hexToHsl(c)[0]);
-    fillHues = fillLargestGaps(inputHues, count - colors.length);
+    fillHues = generateFillHues(inputHues, count, strategy);
   } else {
     // Single input: use strategy
     const allHues = generateHues(anchorH, count, strategy);
